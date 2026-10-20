@@ -5,6 +5,15 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
 logger = logging.getLogger('BinanceTrendBot')
 
+BINANCE_ENDPOINTS = [
+    'https://data-api.binance.vision',
+    'https://api.binance.com',
+    'https://api1.binance.com',
+    'https://api2.binance.com',
+    'https://api3.binance.com',
+    'https://api4.binance.com',
+]
+
 def get_config():
     token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
     chat_id = os.environ.get('TELEGRAM_CHAT_ID', '').strip()
@@ -14,7 +23,6 @@ def get_config():
     return {
         'telegram_bot_token': token,
         'telegram_chat_id': chat_id,
-        'binance_base_url': os.environ.get('BINANCE_API_URL', 'https://api.binance.com'),
         'telegram_api_url': 'https://api.telegram.org',
         'price_change_threshold_pct': float(os.environ.get('PRICE_CHANGE_THRESHOLD', '2.0')),
         'min_quote_volume_usd': int(os.environ.get('MIN_QUOTE_VOLUME', '500000')),
@@ -41,15 +49,14 @@ def calculate_rsi(prices, period=14):
         avg_gain = (avg_gain * (period - 1) + gains[i]) / period
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
     if avg_loss == 0: return 100.0
-    rs = avg_gain / avg_loss
-    return 100.0 - (100.0 / (1.0 + rs))
+    return 100.0 - (100.0 / (1.0 + avg_gain / avg_loss))
 
 def calculate_ema(prices, period):
     if len(prices) < period: return None
-    multiplier = 2.0 / (period + 1)
+    m = 2.0 / (period + 1)
     ema = sum(prices[:period]) / period
     for i in range(period, len(prices)):
-        ema = (prices[i] - ema) * multiplier + ema
+        ema = (prices[i] - ema) * m + ema
     return ema
 
 def safe_pct(closes, lookback):
@@ -88,14 +95,14 @@ def analyze_coin(symbol, klines, config):
           and ema20 is not None and current_price < ema20):
         trend = 'falling'
     if not trend: return None
-    trend_threshold_half = threshold * 0.5
+    half_threshold = threshold * 0.5
     candles_in_trend = 0
     for i in range(len(closes) - 1, 0, -1):
         prev_idx = i - 1
         if prev_idx < 0 or closes[prev_idx] == 0: break
-        candle_change = ((closes[i] - closes[prev_idx]) / closes[prev_idx]) * 100
-        if trend == 'rising' and candle_change >= trend_threshold_half: candles_in_trend += 1
-        elif trend == 'falling' and candle_change <= -trend_threshold_half: candles_in_trend += 1
+        chg = ((closes[i] - closes[prev_idx]) / closes[prev_idx]) * 100
+        if trend == 'rising' and chg >= half_threshold: candles_in_trend += 1
+        elif trend == 'falling' and chg <= -half_threshold: candles_in_trend += 1
         else: break
         if candles_in_trend >= 20: break
     return {
@@ -106,28 +113,33 @@ def analyze_coin(symbol, klines, config):
         'candles_in_trend': candles_in_trend, 'timestamp': int(time.time()),
     }
 
-def api_request(url, params=None, timeout=15):
-    try:
-        resp = requests.get(url, params=params, timeout=timeout,
-                            headers={'User-Agent': 'BinanceTrendBot-GH/1.0'})
-        if resp.status_code == 429:
-            time.sleep(10); return None
-        if resp.status_code != 200: return None
-        return resp.json()
-    except Exception as e:
-        logger.warning(f'API hatasi: {e}'); return None
+def api_request(path, params=None, timeout=15):
+    """Birden fazla endpoint dener - GitHub IP yasaklarını aşar"""
+    for base in BINANCE_ENDPOINTS:
+        url = f"{base}{path}"
+        try:
+            resp = requests.get(url, params=params, timeout=timeout,
+                                headers={'User-Agent': 'BinanceTrendBot-GH/1.0'})
+            if resp.status_code == 429:
+                logger.warning('Rate limit!'); time.sleep(10); continue
+            if resp.status_code != 200:
+                logger.debug(f'{base} HTTP {resp.status_code}')
+                continue
+            return resp.json()
+        except Exception as e:
+            logger.debug(f'{base} hatasi: {e}'); continue
+    logger.error(f'Tum endpointler basarisiz: {path}')
+    return None
 
 def get_usdt_tickers(config, min_volume):
-    url = f"{config['binance_base_url']}/api/v3/ticker/24hr"
-    data = api_request(url, timeout=30)
+    data = api_request('/api/v3/ticker/24hr', timeout=30)
     if not data: return []
     return [t for t in data if t.get('symbol', '').endswith('USDT')
             and float(t.get('quoteVolume', 0)) >= min_volume]
 
-def get_klines(config, symbol):
-    url = f"{config['binance_base_url']}/api/v3/klines"
+def get_klines(symbol, config):
     params = {'symbol': symbol, 'interval': config['kline_interval'], 'limit': config['kline_limit']}
-    return api_request(url, params=params)
+    return api_request('/api/v3/klines', params=params)
 
 def send_telegram_message(config, message):
     url = f"{config['telegram_api_url']}/bot{config['telegram_bot_token']}/sendMessage"
@@ -179,7 +191,8 @@ def run_analysis_cycle(config):
     try:
         tickers = get_usdt_tickers(config, config['min_quote_volume_usd'])
         if not tickers:
-            logger.error('Ticker verisi alinamadi'); return
+            logger.error('Ticker verisi alinamadi - tum Binance endpointleri basarisiz')
+            return
         logger.info(f"{len(tickers)} USDT cifti bulundu")
         tickers.sort(key=lambda t: float(t.get('quoteVolume', 0)), reverse=True)
         threshold = config['price_change_threshold_pct']
@@ -188,12 +201,13 @@ def run_analysis_cycle(config):
         logger.info(f"{len(candidates)} aday coin analiz edilecek")
         to_notify = []
         analyzed_count = 0
+        error_count = 0
         window_min = config['notify_window_min_minutes']
         window_max = config['notify_window_max_minutes']
         for i, ticker in enumerate(candidates):
             symbol = ticker['symbol']
             try:
-                klines = get_klines(config, symbol)
+                klines = get_klines(symbol, config)
                 if not klines: continue
                 analysis = analyze_coin(symbol, klines, config)
                 analyzed_count += 1
@@ -203,6 +217,7 @@ def run_analysis_cycle(config):
                         logger.info(f"  BILDIR: {symbol} {analysis['trend']} ({analysis['trend_duration_minutes']} dk)")
                 time.sleep(config['request_delay_seconds'])
             except Exception as e:
+                error_count += 1
                 logger.debug(f'{symbol} analiz hatasi: {e}'); continue
             if (i + 1) % 20 == 0:
                 logger.info(f"  Ilerleme: {i+1}/{len(candidates)}")
@@ -217,7 +232,7 @@ def run_analysis_cycle(config):
         else:
             logger.info('Bu dongude bildirim yok (yeni 30+ dk trend yok)')
         elapsed = time.time() - start_time
-        logger.info(f"Dongu tamamlandi ({elapsed:.1f} sn) | Analiz: {analyzed_count} | Bildirim: {len(to_notify)}")
+        logger.info(f"Dongu tamamlandi ({elapsed:.1f} sn) | Analiz: {analyzed_count} | Hata: {error_count} | Bildirim: {len(to_notify)}")
     except Exception as e:
         logger.error(f'Dongu hatasi: {e}', exc_info=True)
 
