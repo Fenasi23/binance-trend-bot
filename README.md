@@ -1,0 +1,1 @@
+# binance-trend-bot
