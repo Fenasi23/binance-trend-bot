@@ -114,7 +114,6 @@ def analyze_coin(symbol, klines, config):
     }
 
 def api_request(path, params=None, timeout=15):
-    """Birden fazla endpoint dener - GitHub IP yasaklarını aşar"""
     for base in BINANCE_ENDPOINTS:
         url = f"{base}{path}"
         try:
@@ -123,12 +122,12 @@ def api_request(path, params=None, timeout=15):
             if resp.status_code == 429:
                 logger.warning('Rate limit!'); time.sleep(10); continue
             if resp.status_code != 200:
-                logger.debug(f'{base} HTTP {resp.status_code}')
+                logger.warning(f'{base} HTTP {resp.status_code}')
                 continue
             return resp.json()
         except Exception as e:
-            logger.debug(f'{base} hatasi: {e}'); continue
-    logger.error(f'Tum endpointler basarisiz: {path}')
+            logger.warning(f'{base} hatasi: {e}'); continue
+    logger.error(f'Tum Binance endpointleri basarisiz: {path}')
     return None
 
 def get_usdt_tickers(config, min_volume):
