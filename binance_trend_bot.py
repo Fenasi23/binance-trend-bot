@@ -72,6 +72,20 @@ def format_price(price):
 def format_change(pct):
     return f"+{pct:.2f}%" if pct > 0 else f"{pct:.2f}%"
 
+def rsi_interpretation(rsi):
+    if rsi is None: return "Veri yok"
+    if rsi >= 70: return "Aşırı alım (düşüş gelebilir)"
+    elif rsi >= 60: return "Güçlü, yükseliş eğilimi"
+    elif rsi >= 45: return "Nötr, yükselişe yer var"
+    elif rsi >= 30: return "Nötr-aşağı, düşüş devam edebilir"
+    else: return "Aşırı satım (yükseliş gelebilir)"
+
+def volume_interpretation(vol):
+    if vol >= 3.0: return "Çok güçlü (çok güvenilir)"
+    elif vol >= 2.0: return "Güçlü (güvenilir sinyal)"
+    elif vol >= 1.5: return "Orta güç"
+    else: return "Normal hacim"
+
 def analyze_coin(symbol, klines, config):
     if not klines or len(klines) < 20: return None
     try:
@@ -157,31 +171,60 @@ def build_notification_message(config, trends):
     rising.sort(key=lambda x: x['change_1h'], reverse=True)
     falling.sort(key=lambda x: x['change_1h'])
     now_str = datetime.utcnow().strftime('%d.%m.%Y %H:%M UTC')
-    msg = "--------------------\n"
-    msg += "BINANCE TREND RAPORU\n"
-    msg += f"{now_str} | {len(rising) + len(falling)} yeni trend\n"
-    msg += "--------------------\n\n"
+    msg = "━━━━━━━━━━━━━━━━━━\n"
+    msg += "📊 BINANCE TREND RAPORU\n"
+    msg += f"🕐 {now_str} | {len(rising) + len(falling)} yeni trend\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n\n"
+
     if rising:
-        msg += "YUKSELIS TRENDI\n----------\n"
-        for t in rising[:8]:
-            arrow = "Y" if t['change_1h'] > 5 else "I"
-            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk)\n"
-            msg += f"   Fiyat: {format_price(t['price'])}\n"
-            msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
+        msg += "🟢 YÜKSELİŞ TRENDİ\n"
+        msg += "─────────────────\n"
+        for t in rising[:6]:
+            arrow = "🚀" if t['change_1h'] > 5 else "📈"
+            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk trend)\n"
+            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
+            chg_1h = format_change(t['change_1h'])
+            chg_4h = format_change(t['change_4h'])
+            msg += f"   📊 1s: {chg_1h} | 4s: {chg_4h}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
-            msg += f"   RSI: {rsi_val:.1f} | Hacim: {t['volume_ratio']:.1f}x\n"
+            rsi_interp = rsi_interpretation(t['rsi'])
+            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
+            vol_interp = volume_interpretation(t['volume_ratio'])
+            msg += f"   📊 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
         msg += "\n"
+
     if falling:
-        msg += "DUSUS TRENDI\n----------\n"
-        for t in falling[:8]:
-            arrow = "D" if t['change_1h'] < -5 else "L"
-            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk)\n"
-            msg += f"   Fiyat: {format_price(t['price'])}\n"
-            msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
+        msg += "🔴 DÜŞÜŞ TRENDİ\n"
+        msg += "─────────────────\n"
+        for t in falling[:6]:
+            arrow = "💥" if t['change_1h'] < -5 else "📉"
+            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk trend)\n"
+            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
+            chg_1h = format_change(t['change_1h'])
+            chg_4h = format_change(t['change_4h'])
+            msg += f"   📊 1s: {chg_1h} | 4s: {chg_4h}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
-            msg += f"   RSI: {rsi_val:.1f} | Hacim: {t['volume_ratio']:.1f}x\n"
+            rsi_interp = rsi_interpretation(t['rsi'])
+            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
+            vol_interp = volume_interpretation(t['volume_ratio'])
+            msg += f"   📊 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
         msg += "\n"
-    msg += "--------------------\nOtomatik GitHub Actions bildirimi\nYatirim tavsiyesi degildir."
+
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+    msg += "📖 NASIL YORUMLANIR?\n"
+    msg += "🟢 Yükseliş → Alım fırsatı olabilir\n"
+    msg += "🔴 Düşüş → Satış uyarısı / Dip fırsatı\n\n"
+    msg += "⚡ RSI:\n"
+    msg += "   70+ : Aşırı alım (düşüş gelebilir)\n"
+    msg += "   30-70 : Normal bölge\n"
+    msg += "   <30 : Aşırı satım (yükseliş gelebilir)\n\n"
+    msg += "📊 Hacim:\n"
+    msg += "   1x : Normal\n"
+    msg += "   2x+ : Güçlü (güvenilir sinyal)\n"
+    msg += "   3x+ : Çok güçlü\n\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+    msg += "⚠️ Yatırım tavsiyesi DEĞİLDİR!\n"
+    msg += "Kendi araştırmanızı yapın."
     return msg
 
 def run_analysis_cycle(config):
