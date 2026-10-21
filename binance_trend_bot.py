@@ -24,15 +24,15 @@ def get_config():
         'telegram_bot_token': token,
         'telegram_chat_id': chat_id,
         'telegram_api_url': 'https://api.telegram.org',
-        'price_change_threshold_pct': float(os.environ.get('PRICE_CHANGE_THRESHOLD', '2.0')),
+        'price_change_threshold_pct': float(os.environ.get('PRICE_CHANGE_THRESHOLD', '1.5')),
         'min_quote_volume_usd': int(os.environ.get('MIN_QUOTE_VOLUME', '500000')),
         'rsi_period': int(os.environ.get('RSI_PERIOD', '14')),
-        'rsi_overbought': float(os.environ.get('RSI_OVERBOUGHT', '75')),
-        'rsi_oversold': float(os.environ.get('RSI_OVERSOLD', '25')),
+        'rsi_overbought': float(os.environ.get('RSI_OVERBOUGHT', '80')),
+        'rsi_oversold': float(os.environ.get('RSI_OVERSOLD', '20')),
         'kline_interval': os.environ.get('KLINE_INTERVAL', '15m'),
         'kline_limit': int(os.environ.get('KLINE_LIMIT', '100')),
-        'notify_window_min_minutes': int(os.environ.get('NOTIFY_WINDOW_MIN', '30')),
-        'notify_window_max_minutes': int(os.environ.get('NOTIFY_WINDOW_MAX', '40')),
+        'notify_window_min_minutes': int(os.environ.get('NOTIFY_WINDOW_MIN', '15')),
+        'notify_window_max_minutes': int(os.environ.get('NOTIFY_WINDOW_MAX', '240')),
         'max_notifications_per_cycle': int(os.environ.get('MAX_NOTIFICATIONS', '15')),
         'request_delay_seconds': float(os.environ.get('REQUEST_DELAY', '0.05')),
         'max_coins_to_analyze': int(os.environ.get('MAX_COINS', '100')),
@@ -74,17 +74,36 @@ def format_change(pct):
 
 def rsi_interpretation(rsi):
     if rsi is None: return "Veri yok"
-    if rsi >= 70: return "Aşırı alım (düşüş gelebilir)"
-    elif rsi >= 60: return "Güçlü, yükseliş eğilimi"
-    elif rsi >= 45: return "Nötr, yükselişe yer var"
-    elif rsi >= 30: return "Nötr-aşağı, düşüş devam edebilir"
-    else: return "Aşırı satım (yükseliş gelebilir)"
+    if rsi >= 70: return "Asiri alim (dusus gelebilir)"
+    elif rsi >= 60: return "Guclu, yukselis egilimi"
+    elif rsi >= 45: return "Notr, yukselise yer var"
+    elif rsi >= 30: return "Notr-asagi, dusus devam edebilir"
+    else: return "Asiri satim (yukselis gelebilir)"
 
 def volume_interpretation(vol):
-    if vol >= 3.0: return "Çok güçlü (çok güvenilir)"
-    elif vol >= 2.0: return "Güçlü (güvenilir sinyal)"
-    elif vol >= 1.5: return "Orta güç"
+    if vol >= 3.0: return "Cok guclu (cok guvenilir)"
+    elif vol >= 2.0: return "Guclu (guvenilir sinyal)"
+    elif vol >= 1.5: return "Orta guc"
     else: return "Normal hacim"
+
+def calculate_trend_duration(closes, trend, threshold):
+    """Kumulatif degisimle trend suresini hesapla - daha mantikli"""
+    candles_in_trend = 0
+    min_cum_change = threshold * 0.25
+    max_lookback = min(20, len(closes) - 1)
+    for lookback in range(1, max_lookback + 1):
+        past_idx = len(closes) - 1 - lookback
+        if past_idx < 0: break
+        past_price = closes[past_idx]
+        if past_price == 0: break
+        cum_change = ((closes[-1] - past_price) / past_price) * 100
+        if trend == 'rising' and cum_change >= min_cum_change:
+            candles_in_trend = lookback
+        elif trend == 'falling' and cum_change <= -min_cum_change:
+            candles_in_trend = lookback
+        else:
+            break
+    return candles_in_trend * 15
 
 def analyze_coin(symbol, klines, config):
     if not klines or len(klines) < 20: return None
@@ -95,36 +114,40 @@ def analyze_coin(symbol, klines, config):
     current_price = closes[-1]
     rsi = calculate_rsi(closes, config['rsi_period'])
     ema20 = calculate_ema(closes, 20)
+    change_30m = safe_pct(closes, 2) or 0
     change_1h = safe_pct(closes, 4) or 0
+    change_2h = safe_pct(closes, 8) or 0
     change_4h = safe_pct(closes, 16) or 0
     change_24h = safe_pct(closes, len(closes) - 1) or 0
     avg_vol = sum(volumes[-20:]) / max(len(volumes[-20:]), 1)
     vol_ratio = volumes[-1] / avg_vol if avg_vol > 0 else 1.0
     threshold = config['price_change_threshold_pct']
     trend = None
-    if (change_1h > threshold and rsi is not None and rsi < config['rsi_overbought']
-            and ema20 is not None and current_price > ema20):
+    trend_score = 0
+    if change_1h > threshold: trend_score += 2
+    if change_2h > threshold * 0.5: trend_score += 1
+    if change_30m > 0: trend_score += 1
+    if rsi is not None and rsi < config['rsi_overbought']: trend_score += 1
+    if ema20 is not None and current_price > ema20: trend_score += 2
+    if trend_score >= 5:
         trend = 'rising'
-    elif (change_1h < -threshold and rsi is not None and rsi > config['rsi_oversold']
-          and ema20 is not None and current_price < ema20):
-        trend = 'falling'
+    else:
+        trend_score = 0
+        if change_1h < -threshold: trend_score += 2
+        if change_2h < -threshold * 0.5: trend_score += 1
+        if change_30m < 0: trend_score += 1
+        if rsi is not None and rsi > config['rsi_oversold']: trend_score += 1
+        if ema20 is not None and current_price < ema20: trend_score += 2
+        if trend_score >= 5:
+            trend = 'falling'
     if not trend: return None
-    half_threshold = threshold * 0.5
-    candles_in_trend = 0
-    for i in range(len(closes) - 1, 0, -1):
-        prev_idx = i - 1
-        if prev_idx < 0 or closes[prev_idx] == 0: break
-        chg = ((closes[i] - closes[prev_idx]) / closes[prev_idx]) * 100
-        if trend == 'rising' and chg >= half_threshold: candles_in_trend += 1
-        elif trend == 'falling' and chg <= -half_threshold: candles_in_trend += 1
-        else: break
-        if candles_in_trend >= 20: break
+    trend_duration = calculate_trend_duration(closes, trend, threshold)
     return {
         'symbol': symbol, 'price': current_price,
         'change_1h': change_1h, 'change_4h': change_4h, 'change_24h': change_24h,
         'rsi': rsi, 'volume_ratio': vol_ratio, 'ema20': ema20,
-        'trend': trend, 'trend_duration_minutes': candles_in_trend * 15,
-        'candles_in_trend': candles_in_trend, 'timestamp': int(time.time()),
+        'trend': trend, 'trend_duration_minutes': trend_duration,
+        'timestamp': int(time.time()),
     }
 
 def api_request(path, params=None, timeout=15):
@@ -171,60 +194,51 @@ def build_notification_message(config, trends):
     rising.sort(key=lambda x: x['change_1h'], reverse=True)
     falling.sort(key=lambda x: x['change_1h'])
     now_str = datetime.utcnow().strftime('%d.%m.%Y %H:%M UTC')
-    msg = "━━━━━━━━━━━━━━━━━━\n"
-    msg += "📊 BINANCE TREND RAPORU\n"
-    msg += f"🕐 {now_str} | {len(rising) + len(falling)} yeni trend\n"
-    msg += "━━━━━━━━━━━━━━━━━━\n\n"
-
+    msg = "--------------------\n"
+    msg += "BINANCE TREND RAPORU\n"
+    msg += f"{now_str} | {len(rising) + len(falling)} yeni trend\n"
+    msg += "--------------------\n\n"
     if rising:
-        msg += "🟢 YÜKSELİŞ TRENDİ\n"
-        msg += "─────────────────\n"
+        msg += "YUKSELIS TRENDI\n----------\n"
         for t in rising[:6]:
-            arrow = "🚀" if t['change_1h'] > 5 else "📈"
+            arrow = "Y" if t['change_1h'] > 5 else "I"
             msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk trend)\n"
-            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
-            chg_1h = format_change(t['change_1h'])
-            chg_4h = format_change(t['change_4h'])
-            msg += f"   📊 1s: {chg_1h} | 4s: {chg_4h}\n"
+            msg += f"   Fiyat: {format_price(t['price'])}\n"
+            msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
             rsi_interp = rsi_interpretation(t['rsi'])
-            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
+            msg += f"   RSI: {rsi_val:.1f} -> {rsi_interp}\n"
             vol_interp = volume_interpretation(t['volume_ratio'])
-            msg += f"   📊 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
+            msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
         msg += "\n"
-
     if falling:
-        msg += "🔴 DÜŞÜŞ TRENDİ\n"
-        msg += "─────────────────\n"
+        msg += "DUSUS TRENDI\n----------\n"
         for t in falling[:6]:
-            arrow = "💥" if t['change_1h'] < -5 else "📉"
+            arrow = "D" if t['change_1h'] < -5 else "L"
             msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk trend)\n"
-            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
-            chg_1h = format_change(t['change_1h'])
-            chg_4h = format_change(t['change_4h'])
-            msg += f"   📊 1s: {chg_1h} | 4s: {chg_4h}\n"
+            msg += f"   Fiyat: {format_price(t['price'])}\n"
+            msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
             rsi_interp = rsi_interpretation(t['rsi'])
-            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
+            msg += f"   RSI: {rsi_val:.1f} -> {rsi_interp}\n"
             vol_interp = volume_interpretation(t['volume_ratio'])
-            msg += f"   📊 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
+            msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
         msg += "\n"
-
-    msg += "━━━━━━━━━━━━━━━━━━\n"
-    msg += "📖 NASIL YORUMLANIR?\n"
-    msg += "🟢 Yükseliş → Alım fırsatı olabilir\n"
-    msg += "🔴 Düşüş → Satış uyarısı / Dip fırsatı\n\n"
-    msg += "⚡ RSI:\n"
-    msg += "   70+ : Aşırı alım (düşüş gelebilir)\n"
-    msg += "   30-70 : Normal bölge\n"
-    msg += "   <30 : Aşırı satım (yükseliş gelebilir)\n\n"
-    msg += "📊 Hacim:\n"
+    msg += "--------------------\n"
+    msg += "NASIL YORUMLANIR?\n"
+    msg += "Y = Yukselis -> Alim firsati olabilir\n"
+    msg += "D = Dusus -> Satis uyari / Dip firsati\n\n"
+    msg += "RSI:\n"
+    msg += "   70+ : Asiri alim (dusus gelebilir)\n"
+    msg += "   30-70 : Normal bolge\n"
+    msg += "   <30 : Asiri satim (yukselis gelebilir)\n\n"
+    msg += "Hacim:\n"
     msg += "   1x : Normal\n"
-    msg += "   2x+ : Güçlü (güvenilir sinyal)\n"
-    msg += "   3x+ : Çok güçlü\n\n"
-    msg += "━━━━━━━━━━━━━━━━━━\n"
-    msg += "⚠️ Yatırım tavsiyesi DEĞİLDİR!\n"
-    msg += "Kendi araştırmanızı yapın."
+    msg += "   2x+ : Guclu (guvenilir sinyal)\n"
+    msg += "   3x+ : Cok guclu\n\n"
+    msg += "--------------------\n"
+    msg += "Yatirim tavsiyesi DEGILDIR!\n"
+    msg += "Kendi arastirmanizi yapin."
     return msg
 
 def run_analysis_cycle(config):
@@ -233,15 +247,16 @@ def run_analysis_cycle(config):
     try:
         tickers = get_usdt_tickers(config, config['min_quote_volume_usd'])
         if not tickers:
-            logger.error('Ticker verisi alinamadi - tum Binance endpointleri basarisiz')
+            logger.error('Ticker verisi alinamadi')
             return
         logger.info(f"{len(tickers)} USDT cifti bulundu")
         tickers.sort(key=lambda t: float(t.get('quoteVolume', 0)), reverse=True)
         threshold = config['price_change_threshold_pct']
-        candidates = [t for t in tickers if abs(float(t.get('priceChangePercent', 0))) >= threshold * 0.5]
+        candidates = [t for t in tickers if abs(float(t.get('priceChangePercent', 0))) >= threshold * 0.3]
         candidates = candidates[:config['max_coins_to_analyze']]
         logger.info(f"{len(candidates)} aday coin analiz edilecek")
         to_notify = []
+        trends_found = 0
         analyzed_count = 0
         error_count = 0
         window_min = config['notify_window_min_minutes']
@@ -254,9 +269,13 @@ def run_analysis_cycle(config):
                 analysis = analyze_coin(symbol, klines, config)
                 analyzed_count += 1
                 if analysis and analysis['trend']:
+                    trends_found += 1
+                    logger.info(f"  Trend: {symbol} {analysis['trend']} ({analysis['trend_duration_minutes']} dk, 1s: {analysis['change_1h']:.2f}%)")
                     if window_min <= analysis['trend_duration_minutes'] <= window_max:
                         to_notify.append(analysis)
-                        logger.info(f"  BILDIR: {symbol} {analysis['trend']} ({analysis['trend_duration_minutes']} dk)")
+                        logger.info(f"    -> BILDIRILECEK")
+                    else:
+                        logger.info(f"    -> Pencere disi (15-240 dk olmali)")
                 time.sleep(config['request_delay_seconds'])
             except Exception as e:
                 error_count += 1
@@ -272,9 +291,9 @@ def run_analysis_cycle(config):
             else:
                 logger.error('Telegram bildirimi basarisiz!')
         else:
-            logger.info('Bu dongude bildirim yok (yeni 30+ dk trend yok)')
+            logger.info(f'Bu dongude bildirim yok (trend: {trends_found}, pencerede: 0)')
         elapsed = time.time() - start_time
-        logger.info(f"Dongu tamamlandi ({elapsed:.1f} sn) | Analiz: {analyzed_count} | Hata: {error_count} | Bildirim: {len(to_notify)}")
+        logger.info(f"Dongu tamamlandi ({elapsed:.1f} sn) | Analiz: {analyzed_count} | Trend: {trends_found} | Hata: {error_count} | Bildirim: {len(to_notify)}")
     except Exception as e:
         logger.error(f'Dongu hatasi: {e}', exc_info=True)
 
