@@ -87,7 +87,6 @@ def volume_interpretation(vol):
     else: return "Normal hacim"
 
 def calculate_trend_duration(closes, trend, threshold):
-    """Kumulatif degisimle trend suresini hesapla - daha mantikli"""
     candles_in_trend = 0
     min_cum_change = threshold * 0.25
     max_lookback = min(20, len(closes) - 1)
@@ -179,7 +178,7 @@ def get_klines(symbol, config):
 
 def send_telegram_message(config, message):
     url = f"{config['telegram_api_url']}/bot{config['telegram_bot_token']}/sendMessage"
-        data = {'chat_id': config['telegram_chat_id'], 'text': message, 'disable_web_page_preview': True},  'disable_web_page_preview': True}
+    data = {'chat_id': config['telegram_chat_id'], 'text': message, 'disable_web_page_preview': True}
     try:
         resp = requests.post(url, json=data, timeout=15)
         if resp.status_code != 200:
