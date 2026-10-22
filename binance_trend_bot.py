@@ -153,21 +153,16 @@ def get_position_recommendation(analysis):
     return base + vol_note
 
 def get_position_emoji(analysis):
-    """LONG yeşil, SHORT kırmızı emoji"""
     trend = analysis['trend']
     rsi = analysis.get('rsi')
     if trend == 'rising':
-        if rsi is not None and rsi >= 75:
-            return "🟡"  # BEKLE - sarı (nötr)
         if rsi is not None and rsi >= 65:
-            return "🟡"  # DIKKAT - sarı
-        return "🟢"  # LONG - yeşil
+            return "🟡"
+        return "🟢"
     else:
-        if rsi is not None and rsi <= 25:
-            return "🟡"  # BEKLE - sarı
         if rsi is not None and rsi <= 35:
-            return "🟡"  # DIKKAT - sarı
-        return "🔴"  # SHORT - kırmızı
+            return "🟡"
+        return "🔴"
 
 def get_leverage_recommendation(analysis):
     rsi = analysis.get('rsi')
@@ -188,25 +183,46 @@ def get_leverage_recommendation(analysis):
     elif strength >= 4: return "3x-5x (zayif trend)"
     else: return "2x-3x (dusuk - dikkat)"
 
-def calculate_tp_sl(analysis):
+def calculate_tp_sl_smart(analysis, leverage_str):
+    """Kaldiraca gore akilli TP/SL - likit olmamak icin"""
     trend = analysis['trend']
     price = analysis['price']
-    ema20 = analysis.get('ema20')
-    if trend == 'rising':
-        tp1 = price * 1.05
-        tp2 = price * 1.10
-        tp3 = price * 1.15
-        sl = price * 0.97
-        if ema20 and ema20 < sl and ema20 > 0:
-            sl = ema20
+    if "10x-15x" in leverage_str:
+        sl_pct, tp1_pct, tp2_pct, tp3_pct, lev = 0.02, 0.03, 0.06, 0.10, 12
+    elif "5x-10x" in leverage_str:
+        sl_pct, tp1_pct, tp2_pct, tp3_pct, lev = 0.03, 0.045, 0.09, 0.15, 7
+    elif "3x-5x" in leverage_str:
+        sl_pct, tp1_pct, tp2_pct, tp3_pct, lev = 0.04, 0.06, 0.12, 0.20, 4
     else:
-        tp1 = price * 0.95
-        tp2 = price * 0.90
-        tp3 = price * 0.85
-        sl = price * 1.03
-        if ema20 and ema20 > sl and ema20 > 0:
-            sl = ema20
-    return tp1, tp2, tp3, sl
+        sl_pct, tp1_pct, tp2_pct, tp3_pct, lev = 0.05, 0.075, 0.15, 0.25, 2
+    if trend == 'rising':
+        tp1 = price * (1 + tp1_pct)
+        tp2 = price * (1 + tp2_pct)
+        tp3 = price * (1 + tp3_pct)
+        sl = price * (1 - sl_pct)
+        liq_price = price * (1 - 1/lev)
+        sl_pct_disp = -sl_pct * 100
+        liq_pct = -(1/lev) * 100
+        tp1_disp = tp1_pct * 100
+        tp2_disp = tp2_pct * 100
+        tp3_disp = tp3_pct * 100
+    else:
+        tp1 = price * (1 - tp1_pct)
+        tp2 = price * (1 - tp2_pct)
+        tp3 = price * (1 - tp3_pct)
+        sl = price * (1 + sl_pct)
+        liq_price = price * (1 + 1/lev)
+        sl_pct_disp = sl_pct * 100
+        liq_pct = (1/lev) * 100
+        tp1_disp = -tp1_pct * 100
+        tp2_disp = -tp2_pct * 100
+        tp3_disp = -tp3_pct * 100
+    return {
+        'tp1': tp1, 'tp2': tp2, 'tp3': tp3, 'sl': sl,
+        'liq_price': liq_price, 'leverage': lev,
+        'sl_pct': sl_pct_disp, 'liq_pct': liq_pct,
+        'tp1_pct': tp1_disp, 'tp2_pct': tp2_disp, 'tp3_pct': tp3_disp
+    }
 
 def calculate_trend_duration(closes, trend, threshold):
     candles_in_trend = 0
@@ -340,12 +356,13 @@ def build_notification_message(config, trends):
             msg += f"   🎯 Pozisyon: {pos_emoji} {position_rec}\n"
             leverage = get_leverage_recommendation(t)
             msg += f"   🎚️ Kaldirac: {leverage}\n"
-            tp1, tp2, tp3, sl = calculate_tp_sl(t)
-            msg += f"   💎 TP1 (Take Profit): {format_price(tp1)} (+5%)\n"
-            msg += f"   💎 TP2 (Take Profit): {format_price(tp2)} (+10%)\n"
-            msg += f"   💎 TP3 (Take Profit): {format_price(tp3)} (+15%)\n"
-            sl_pct = ((sl - t['price']) / t['price']) * 100
-            msg += f"   🛑 SL (Stop Loss): {format_price(sl)} ({sl_pct:+.1f}%)\n"
+            tpsl = calculate_tp_sl_smart(t, leverage)
+            msg += f"   💎 TP1: {format_price(tpsl['tp1'])} ({tpsl['tp1_pct']:+.1f}%)\n"
+            msg += f"   💎 TP2: {format_price(tpsl['tp2'])} ({tpsl['tp2_pct']:+.1f}%)\n"
+            msg += f"   💎 TP3: {format_price(tpsl['tp3'])} ({tpsl['tp3_pct']:+.1f}%)\n"
+            msg += f"   🛑 SL: {format_price(tpsl['sl'])} ({tpsl['sl_pct']:+.1f}%)\n"
+            msg += f"   ⚠️ Likitasyon: {format_price(tpsl['liq_price'])} ({tpsl['liq_pct']:+.1f}%)\n"
+            msg += f"   ✅ SL, likitasyondan ONCE calisir (guvenli)\n"
         msg += "\n"
     if falling:
         msg += "🔴🔴🔴 DUSUS TRENDI (SHORT FIRSATLARI)\n"
@@ -367,12 +384,13 @@ def build_notification_message(config, trends):
             msg += f"   🎯 Pozisyon: {pos_emoji} {position_rec}\n"
             leverage = get_leverage_recommendation(t)
             msg += f"   🎚️ Kaldirac: {leverage}\n"
-            tp1, tp2, tp3, sl = calculate_tp_sl(t)
-            msg += f"   💎 TP1 (Take Profit): {format_price(tp1)} (-5%)\n"
-            msg += f"   💎 TP2 (Take Profit): {format_price(tp2)} (-10%)\n"
-            msg += f"   💎 TP3 (Take Profit): {format_price(tp3)} (-15%)\n"
-            sl_pct = ((sl - t['price']) / t['price']) * 100
-            msg += f"   🛑 SL (Stop Loss): {format_price(sl)} ({sl_pct:+.1f}%)\n"
+            tpsl = calculate_tp_sl_smart(t, leverage)
+            msg += f"   💎 TP1: {format_price(tpsl['tp1'])} ({tpsl['tp1_pct']:+.1f}%)\n"
+            msg += f"   💎 TP2: {format_price(tpsl['tp2'])} ({tpsl['tp2_pct']:+.1f}%)\n"
+            msg += f"   💎 TP3: {format_price(tpsl['tp3'])} ({tpsl['tp3_pct']:+.1f}%)\n"
+            msg += f"   🛑 SL: {format_price(tpsl['sl'])} ({tpsl['sl_pct']:+.1f}%)\n"
+            msg += f"   ⚠️ Likitasyon: {format_price(tpsl['liq_price'])} ({tpsl['liq_pct']:+.1f}%)\n"
+            msg += f"   ✅ SL, likitasyondan ONCE calisir (guvenli)\n"
         msg += "\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += "📖 NASIL YORUMLANIR?\n\n"
@@ -380,38 +398,33 @@ def build_notification_message(config, trends):
     msg += "🔴 = SHORT (Satis) - Dusus trendi\n"
     msg += "🟡 = BEKLE / DIKKAT - Riskli bolge\n\n"
     msg += "🎯 Pozisyon onerisi:\n"
-    msg += "   🟢 LONG (Alim) → Yukselis trendinde alim\n"
-    msg += "   🔴 SHORT (Satis) → Dusus trendinde satis\n"
-    msg += "   🟡 DIKKAT/BEKLE → Trend olgun, donus gelebilir\n\n"
+    msg += "   🟢 LONG → Yukselis trendinde alim\n"
+    msg += "   🔴 SHORT → Dusus trendinde satis\n"
+    msg += "   🟡 DIKKAT/BEKLE → Trend olgun\n\n"
     msg += "🎚️ Kaldirac onerisi (gucune gore):\n"
-    msg += "   2x-3x → Cok dusuk (zayif trend, dikkat)\n"
-    msg += "   3x-5x → Dusuk-orta (zayif trend)\n"
-    msg += "   5x-10x → Orta (orta guc)\n"
-    msg += "   10x-15x → Yuksek (guclu trend)\n"
-    msg += "   ⚠️ Kaldirac yukseldikce risk artar!\n\n"
-    msg += "💎 TP (Take Profit) seviyeleri:\n"
-    msg += "   TP1 → %5 kar al (ilk hedef)\n"
-    msg += "   TP2 → %10 kar al (orta hedef)\n"
-    msg += "   TP3 → %15 kar al (uzun hedef)\n\n"
-    msg += "🛑 SL (Stop Loss):\n"
-    msg += "   Fiyat %3 aleyhine gidince satis\n"
-    msg += "   Zarar limiti - risk yonetimi\n\n"
+    msg += "   2x-3x → Cok dusuk (zayif trend)\n"
+    msg += "   3x-5x → Dusuk-orta\n"
+    msg += "   5x-10x → Orta\n"
+    msg += "   10x-15x → Yuksek (guclu trend)\n\n"
+    msg += "💎 TP / 🛑 SL (Kaldiraca gore hesaplanir):\n"
+    msg += "   SL her zaman likitasyondan ONCE!\n"
+    msg += "   TP1 → kucuk kar (1.5x SL)\n"
+    msg += "   TP2 → orta kar (3x SL)\n"
+    msg += "   TP3 → buyuk kar (5x SL)\n"
+    msg += "   ⚠️ Likitasyon → hesap kapanir!\n\n"
     msg += "⚡ RSI:\n"
     msg += "   70+ → Asiri alim (dusus gelebilir)\n"
     msg += "   30-70 → Normal bolge\n"
-    msg += "   30 alti → Asiri satim (yukselis gelebilir)\n\n"
+    msg += "   30 alti → Asiri satim\n\n"
     msg += "📦 Hacim:\n"
     msg += "   1x → Normal\n"
     msg += "   2x+ → Guclu (guvenilir sinyal)\n"
     msg += "   3x+ → Cok guclu\n\n"
-    msg += "⏱️ Tahmini kalan sure:\n"
-    msg += "   Zirve/dip yakinsa → donus gelebilir\n"
-    msg += "   Baslangicta → trend daha uzun surer\n\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += "⚠️ Yatirim tavsiyesi DEGILDIR!\n"
     msg += "Tahminler teknik analize dayalidir, kesin degildir.\n"
-    msg += "Kendi arastirmanizi yapin.\n"
-    msg += "Yuksek kaldirac = yuksek risk!"
+    msg += "Yuksek kaldirac = yuksek risk!\n"
+    msg += "Kendi arastirmanizi yapin."
     return msg
 
 def run_analysis_cycle(config):
@@ -472,7 +485,7 @@ def run_analysis_cycle(config):
 
 def main():
     config = get_config()
-    logger.info('Binance Trend Bot - GitHub Actions Surumu baslatilio')
+    logger.info('Binance Trend Bot - GitHub Actions Surumu baslatiliyor')
     logger.info(f"Esik: %{config['price_change_threshold_pct']} | Min hacim: ${config['min_quote_volume_usd']:,}")
     logger.info(f"Bildirim penceresi: {config['notify_window_min_minutes']}-{config['notify_window_max_minutes']} dk")
     run_analysis_cycle(config)
