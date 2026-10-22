@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+  repository_dispatch:
+    types: [run-analysis]
 
 jobs:
   analyze:
@@ -29,6 +31,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          NOTIFY_WINDOW_MIN: '25'
-          NOTIFY_WINDOW_MAX: '180'
+          NOTIFY_WINDOW_MIN: '15'
+          NOTIFY_WINDOW_MAX: '240'
         run: python binance_trend_bot.py
