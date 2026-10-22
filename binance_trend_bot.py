@@ -76,17 +76,18 @@ def format_change(pct):
 
 def rsi_interpretation(rsi):
     if rsi is None: return "Veri yok"
-    if rsi >= 70: return "Asiri alim (dusus gelebilir)"
-    elif rsi >= 60: return "Guclu, yukselis egilimi"
-    elif rsi >= 45: return "Notr, yukselise yer var"
-    elif rsi >= 30: return "Notr-asagi, dusus devam edebilir"
-    else: return "Asiri satim (yukselis gelebilir)"
+    if rsi >= 70: return "Asiri alim"
+    elif rsi >= 60: return "Guclu yukselis"
+    elif rsi >= 45: return "Notr (yer var)"
+    elif rsi >= 30: return "Notr-asagi"
+    else: return "Asiri satim"
 
 def volume_interpretation(vol):
-    if vol >= 3.0: return "Cok guclu (cok guvenilir)"
-    elif vol >= 2.0: return "Guclu (guvenilir sinyal)"
-    elif vol >= 1.5: return "Orta guc"
-    else: return "Normal hacim"
+    if vol >= 3.0: return "Cok guclu"
+    elif vol >= 2.0: return "Guclu"
+    elif vol >= 1.5: return "Orta"
+    elif vol >= 0.5: return "Normal"
+    else: return "Cok zayif"
 
 def estimate_trend_remaining(analysis):
     trend = analysis['trend']
@@ -94,32 +95,20 @@ def estimate_trend_remaining(analysis):
     vol_ratio = analysis.get('volume_ratio', 1.0)
     if rsi is None: return "Tahmin yok"
     vol_note = ""
-    if vol_ratio >= 2.5:
-        vol_note = " (hacim yuksek, daha uzun)"
-    elif vol_ratio < 1.5:
-        vol_note = " (hacim zayif, daha kisa)"
+    if vol_ratio >= 2.5: vol_note = " (yuksek hacim)"
+    elif vol_ratio < 1.5: vol_note = " (zayif hacim)"
     if trend == 'rising':
-        if rsi >= 75:
-            base = "0-2 saat daha (zirve yaklasiyor, donus gelebilir)"
-        elif rsi >= 65:
-            base = "1-3 saat daha (olgunlasiyor)"
-        elif rsi >= 50:
-            base = "2-4 saat daha (devam ediyor)"
-        elif rsi >= 35:
-            base = "4-8 saat daha (baslangic, yukari yer var)"
-        else:
-            base = "6-12 saat daha (yeni basladi)"
+        if rsi >= 75: base = "0-2 saat (zirve yakin)"
+        elif rsi >= 65: base = "1-3 saat (olgun)"
+        elif rsi >= 50: base = "2-4 saat (devam)"
+        elif rsi >= 35: base = "4-8 saat (baslangic)"
+        else: base = "6-12 saat (yeni)"
     else:
-        if rsi <= 25:
-            base = "0-2 saat daha (dip yaklasiyor, donus gelebilir)"
-        elif rsi <= 35:
-            base = "1-3 saat daha (olgunlasiyor)"
-        elif rsi <= 50:
-            base = "2-4 saat daha (devam ediyor)"
-        elif rsi <= 65:
-            base = "4-8 saat daha (baslangic, asagi yer var)"
-        else:
-            base = "6-12 saat daha (yeni basladi)"
+        if rsi <= 25: base = "0-2 saat (dip yakin)"
+        elif rsi <= 35: base = "1-3 saat (olgun)"
+        elif rsi <= 50: base = "2-4 saat (devam)"
+        elif rsi <= 65: base = "4-8 saat (baslangic)"
+        else: base = "6-12 saat (yeni)"
     return base + vol_note
 
 def get_position_recommendation(analysis):
@@ -128,47 +117,34 @@ def get_position_recommendation(analysis):
     vol_ratio = analysis.get('volume_ratio', 1.0)
     if rsi is None: return "Veri yok"
     vol_note = ""
-    if vol_ratio >= 2.5:
-        vol_note = " (guclu hacim)"
-    elif vol_ratio < 1.5:
-        vol_note = " (zayif hacim - dikkat)"
+    if vol_ratio >= 2.5: vol_note = " (guclu hacim)"
+    elif vol_ratio < 1.5: vol_note = " (zayif hacim)"
     if trend == 'rising':
-        if rsi < 50:
-            base = "LONG (Alim) - yukselis yeni basladi"
-        elif rsi < 65:
-            base = "LONG (Alim) - yukselis devam ediyor"
-        elif rsi < 75:
-            base = "DIKKAT (yukselis olgun) - zirve yaklasiyor"
-        else:
-            base = "BEKLE (zirve, riskli) - alim icin gec olabilir"
+        if rsi < 50: return "LONG - yeni basladi" + vol_note
+        elif rsi < 65: return "LONG - devam ediyor" + vol_note
+        elif rsi < 75: return "DIKKAT - zirve yakin"
+        else: return "BEKLE - zirve, riskli"
     else:
-        if rsi > 50:
-            base = "SHORT (Satis) - dusus yeni basladi"
-        elif rsi > 35:
-            base = "SHORT (Satis) - dusus devam ediyor"
-        elif rsi > 25:
-            base = "DIKKAT (dusus olgun) - dip yaklasiyor"
-        else:
-            base = "BEKLE (dip, riskli) - satis icin gec olabilir"
-    return base + vol_note
+        if rsi > 50: return "SHORT - yeni basladi" + vol_note
+        elif rsi > 35: return "SHORT - devam ediyor" + vol_note
+        elif rsi > 25: return "DIKKAT - dip yakin"
+        else: return "BEKLE - dip, riskli"
 
 def get_position_emoji(analysis):
     trend = analysis['trend']
     rsi = analysis.get('rsi')
     if trend == 'rising':
-        if rsi is not None and rsi >= 65:
-            return "🟡"
+        if rsi is not None and rsi >= 65: return "🟡"
         return "🟢"
     else:
-        if rsi is not None and rsi <= 35:
-            return "🟡"
+        if rsi is not None and rsi <= 35: return "🟡"
         return "🔴"
 
 def get_leverage_recommendation(analysis):
     rsi = analysis.get('rsi')
     vol_ratio = analysis.get('volume_ratio', 1.0)
     change_1h = abs(analysis.get('change_1h', 0))
-    if rsi is None: return "2x-3x (dusuk)"
+    if rsi is None: return "2x-3x"
     strength = 0
     if vol_ratio >= 2.5: strength += 3
     elif vol_ratio >= 1.5: strength += 2
@@ -178,13 +154,12 @@ def get_leverage_recommendation(analysis):
     if change_1h >= 5: strength += 3
     elif change_1h >= 2: strength += 2
     elif change_1h >= 1: strength += 1
-    if strength >= 8: return "10x-15x (guclu trend)"
-    elif strength >= 6: return "5x-10x (orta guc)"
-    elif strength >= 4: return "3x-5x (zayif trend)"
-    else: return "2x-3x (dusuk - dikkat)"
+    if strength >= 8: return "10x-15x"
+    elif strength >= 6: return "5x-10x"
+    elif strength >= 4: return "3x-5x"
+    else: return "2x-3x"
 
 def calculate_tp_sl_smart(analysis, leverage_str):
-    """Kaldiraca gore akilli TP/SL - likit olmamak icin"""
     trend = analysis['trend']
     price = analysis['price']
     if "10x-15x" in leverage_str:
@@ -196,33 +171,15 @@ def calculate_tp_sl_smart(analysis, leverage_str):
     else:
         sl_pct, tp1_pct, tp2_pct, tp3_pct, lev = 0.05, 0.075, 0.15, 0.25, 2
     if trend == 'rising':
-        tp1 = price * (1 + tp1_pct)
-        tp2 = price * (1 + tp2_pct)
-        tp3 = price * (1 + tp3_pct)
-        sl = price * (1 - sl_pct)
-        liq_price = price * (1 - 1/lev)
-        sl_pct_disp = -sl_pct * 100
-        liq_pct = -(1/lev) * 100
-        tp1_disp = tp1_pct * 100
-        tp2_disp = tp2_pct * 100
-        tp3_disp = tp3_pct * 100
+        tp1 = price * (1 + tp1_pct); tp2 = price * (1 + tp2_pct); tp3 = price * (1 + tp3_pct)
+        sl = price * (1 - sl_pct); liq_price = price * (1 - 1/lev)
+        sl_disp, liq_disp, tp1_disp, tp2_disp, tp3_disp = -sl_pct*100, -(1/lev)*100, tp1_pct*100, tp2_pct*100, tp3_pct*100
     else:
-        tp1 = price * (1 - tp1_pct)
-        tp2 = price * (1 - tp2_pct)
-        tp3 = price * (1 - tp3_pct)
-        sl = price * (1 + sl_pct)
-        liq_price = price * (1 + 1/lev)
-        sl_pct_disp = sl_pct * 100
-        liq_pct = (1/lev) * 100
-        tp1_disp = -tp1_pct * 100
-        tp2_disp = -tp2_pct * 100
-        tp3_disp = -tp3_pct * 100
-    return {
-        'tp1': tp1, 'tp2': tp2, 'tp3': tp3, 'sl': sl,
-        'liq_price': liq_price, 'leverage': lev,
-        'sl_pct': sl_pct_disp, 'liq_pct': liq_pct,
-        'tp1_pct': tp1_disp, 'tp2_pct': tp2_disp, 'tp3_pct': tp3_disp
-    }
+        tp1 = price * (1 - tp1_pct); tp2 = price * (1 - tp2_pct); tp3 = price * (1 - tp3_pct)
+        sl = price * (1 + sl_pct); liq_price = price * (1 + 1/lev)
+        sl_disp, liq_disp, tp1_disp, tp2_disp, tp3_disp = sl_pct*100, (1/lev)*100, -tp1_pct*100, -tp2_pct*100, -tp3_pct*100
+    return {'tp1': tp1, 'tp2': tp2, 'tp3': tp3, 'sl': sl, 'liq': liq_price,
+            'sl_pct': sl_disp, 'liq_pct': liq_disp, 'tp1_pct': tp1_disp, 'tp2_pct': tp2_disp, 'tp3_pct': tp3_disp}
 
 def calculate_trend_duration(closes, trend, threshold):
     candles_in_trend = 0
@@ -234,12 +191,9 @@ def calculate_trend_duration(closes, trend, threshold):
         past_price = closes[past_idx]
         if past_price == 0: break
         cum_change = ((closes[-1] - past_price) / past_price) * 100
-        if trend == 'rising' and cum_change >= min_cum_change:
-            candles_in_trend = lookback
-        elif trend == 'falling' and cum_change <= -min_cum_change:
-            candles_in_trend = lookback
-        else:
-            break
+        if trend == 'rising' and cum_change >= min_cum_change: candles_in_trend = lookback
+        elif trend == 'falling' and cum_change <= -min_cum_change: candles_in_trend = lookback
+        else: break
     return candles_in_trend * 15
 
 def analyze_coin(symbol, klines, config):
@@ -266,8 +220,7 @@ def analyze_coin(symbol, klines, config):
     if change_30m > 0: trend_score += 1
     if rsi is not None and rsi < config['rsi_overbought']: trend_score += 1
     if ema20 is not None and current_price > ema20: trend_score += 2
-    if trend_score >= 5:
-        trend = 'rising'
+    if trend_score >= 5: trend = 'rising'
     else:
         trend_score = 0
         if change_1h < -threshold: trend_score += 2
@@ -275,8 +228,7 @@ def analyze_coin(symbol, klines, config):
         if change_30m < 0: trend_score += 1
         if rsi is not None and rsi > config['rsi_oversold']: trend_score += 1
         if ema20 is not None and current_price < ema20: trend_score += 2
-        if trend_score >= 5:
-            trend = 'falling'
+        if trend_score >= 5: trend = 'falling'
     if not trend: return None
     trend_duration = calculate_trend_duration(closes, trend, threshold)
     return {
@@ -325,106 +277,125 @@ def send_telegram_message(config, message):
     except Exception as e:
         logger.error(f'Telegram gonderim hatasi: {e}'); return False
 
+def build_trend_block(t):
+    """Tek trend için şık formatlı blok"""
+    pos_emoji = get_position_emoji(t)
+    if t['trend'] == 'rising':
+        arrow = "🚀" if t['change_1h'] > 5 else "📈"
+    else:
+        arrow = "💥" if t['change_1h'] < -5 else "📉"
+    rsi_val = t['rsi'] if t['rsi'] is not None else 0
+    leverage = get_leverage_recommendation(t)
+    tpsl = calculate_tp_sl_smart(t, leverage)
+    position = get_position_recommendation(t)
+    rsi_interp = rsi_interpretation(t['rsi'])
+    vol_interp = volume_interpretation(t['volume_ratio'])
+    est = estimate_trend_remaining(t)
+    
+    block = ""
+    block += f"\n{pos_emoji}  {arrow}  {t['symbol']}\n"
+    block += f"     {t['trend_duration_minutes']} dk'dir devam\n"
+    block += f"\n"
+    block += f"   💰 Fiyat      :  {format_price(t['price'])}\n"
+    block += f"   📊 1 saat     :  {format_change(t['change_1h'])}\n"
+    block += f"   📊 4 saat     :  {format_change(t['change_4h'])}\n"
+    block += f"   ⚡ RSI        :  {rsi_val:.1f}  ({rsi_interp})\n"
+    block += f"   📦 Hacim      :  {t['volume_ratio']:.2f}x  ({vol_interp})\n"
+    block += f"   ⏱️ Kalan süre :  {est}\n"
+    block += f"\n"
+    block += f"   🎯 Pozisyon  :  {pos_emoji} {position}\n"
+    block += f"   🎚️ Kaldıraç  :  {leverage}\n"
+    block += f"\n"
+    block += f"   💎 TP1 : {format_price(tpsl['tp1'])}  ({tpsl['tp1_pct']:+.1f}%)\n"
+    block += f"   💎 TP2 : {format_price(tpsl['tp2'])}  ({tpsl['tp2_pct']:+.1f}%)\n"
+    block += f"   💎 TP3 : {format_price(tpsl['tp3'])}  ({tpsl['tp3_pct']:+.1f}%)\n"
+    block += f"   🛑 SL  : {format_price(tpsl['sl'])}  ({tpsl['sl_pct']:+.1f}%)\n"
+    block += f"\n"
+    block += f"   ⚠️ Likitasyon : {format_price(tpsl['liq'])}  ({tpsl['liq_pct']:+.1f}%)\n"
+    block += f"   ✅ SL likitasyondan önce çalışır\n"
+    block += f"\n"
+    block += f"   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
+    return block
+
 def build_notification_message(config, trends):
     rising = [t for t in trends if t['trend'] == 'rising']
     falling = [t for t in trends if t['trend'] == 'falling']
     rising.sort(key=lambda x: x['change_1h'], reverse=True)
     falling.sort(key=lambda x: x['change_1h'])
-    now_str = datetime.now(ISTANBUL_TZ).strftime('%d.%m.%Y %H:%M (TSI)')
-    msg = "━━━━━━━━━━━━━━━━━━\n"
-    msg += "📊 BINANCE TREND RAPORU\n"
-    msg += f"🕐 {now_str} | {len(rising) + len(falling)} yeni trend\n"
-    msg += "🟢 LONG (Alim) | 🔴 SHORT (Satis) | 🟡 BEKLE\n"
-    msg += "━━━━━━━━━━━━━━━━━━\n\n"
+    now_str = datetime.now(ISTANBUL_TZ).strftime('%d.%m.%Y %H:%M')
+    total = len(rising) + len(falling)
+    
+    msg = ""
+    # Başlık - şık çerçeve
+    msg += "╔══════════════════════════╗\n"
+    msg += "║                          ║\n"
+    msg += "║   📊 BINANCE TREND       ║\n"
+    msg += "║      RAPORU              ║\n"
+    msg += "║                          ║\n"
+    msg += "╚══════════════════════════╝\n"
+    msg += "\n"
+    msg += f"🕐 Tarih/Saat : {now_str} (TSI)\n"
+    msg += f"📈 Toplam    : {total} yeni trend\n"
+    msg += "\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "🟢 LONG (Alım)  🔴 SHORT (Satış)  🟡 BEKLE\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "\n"
+    
     if rising:
-        msg += "🟢🟢🟢 YUKSELIS TRENDI (LONG FIRSATLARI)\n"
-        msg += "─────────────────────────────────────\n"
+        msg += "╭──────────────────────────╮\n"
+        msg += "│ 🟢 YÜKSELİŞ TRENDİ       │\n"
+        msg += "│    LONG FIRSATLARI       │\n"
+        msg += "╰──────────────────────────╯\n"
+        msg += "\n"
         for t in rising[:6]:
-            pos_emoji = get_position_emoji(t)
-            arrow = "🚀" if t['change_1h'] > 5 else "📈"
-            msg += f"\n{pos_emoji} {arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
-            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
-            msg += f"   📊 1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
-            rsi_val = t['rsi'] if t['rsi'] is not None else 0
-            rsi_interp = rsi_interpretation(t['rsi'])
-            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
-            vol_interp = volume_interpretation(t['volume_ratio'])
-            msg += f"   📦 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
-            est_remaining = estimate_trend_remaining(t)
-            msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
-            position_rec = get_position_recommendation(t)
-            msg += f"   🎯 Pozisyon: {pos_emoji} {position_rec}\n"
-            leverage = get_leverage_recommendation(t)
-            msg += f"   🎚️ Kaldirac: {leverage}\n"
-            tpsl = calculate_tp_sl_smart(t, leverage)
-            msg += f"   💎 TP1: {format_price(tpsl['tp1'])} ({tpsl['tp1_pct']:+.1f}%)\n"
-            msg += f"   💎 TP2: {format_price(tpsl['tp2'])} ({tpsl['tp2_pct']:+.1f}%)\n"
-            msg += f"   💎 TP3: {format_price(tpsl['tp3'])} ({tpsl['tp3_pct']:+.1f}%)\n"
-            msg += f"   🛑 SL: {format_price(tpsl['sl'])} ({tpsl['sl_pct']:+.1f}%)\n"
-            msg += f"   ⚠️ Likitasyon: {format_price(tpsl['liq_price'])} ({tpsl['liq_pct']:+.1f}%)\n"
-            msg += f"   ✅ SL, likitasyondan ONCE calisir (guvenli)\n"
+            msg += build_trend_block(t)
         msg += "\n"
+    
     if falling:
-        msg += "🔴🔴🔴 DUSUS TRENDI (SHORT FIRSATLARI)\n"
-        msg += "─────────────────────────────────────\n"
-        for t in falling[:6]:
-            pos_emoji = get_position_emoji(t)
-            arrow = "💥" if t['change_1h'] < -5 else "📉"
-            msg += f"\n{pos_emoji} {arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
-            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
-            msg += f"   📊 1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
-            rsi_val = t['rsi'] if t['rsi'] is not None else 0
-            rsi_interp = rsi_interpretation(t['rsi'])
-            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
-            vol_interp = volume_interpretation(t['volume_ratio'])
-            msg += f"   📦 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
-            est_remaining = estimate_trend_remaining(t)
-            msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
-            position_rec = get_position_recommendation(t)
-            msg += f"   🎯 Pozisyon: {pos_emoji} {position_rec}\n"
-            leverage = get_leverage_recommendation(t)
-            msg += f"   🎚️ Kaldirac: {leverage}\n"
-            tpsl = calculate_tp_sl_smart(t, leverage)
-            msg += f"   💎 TP1: {format_price(tpsl['tp1'])} ({tpsl['tp1_pct']:+.1f}%)\n"
-            msg += f"   💎 TP2: {format_price(tpsl['tp2'])} ({tpsl['tp2_pct']:+.1f}%)\n"
-            msg += f"   💎 TP3: {format_price(tpsl['tp3'])} ({tpsl['tp3_pct']:+.1f}%)\n"
-            msg += f"   🛑 SL: {format_price(tpsl['sl'])} ({tpsl['sl_pct']:+.1f}%)\n"
-            msg += f"   ⚠️ Likitasyon: {format_price(tpsl['liq_price'])} ({tpsl['liq_pct']:+.1f}%)\n"
-            msg += f"   ✅ SL, likitasyondan ONCE calisir (guvenli)\n"
+        msg += "╭──────────────────────────╮\n"
+        msg += "│ 🔴 DÜŞÜŞ TRENDİ           │\n"
+        msg += "│    SHORT FIRSATLARI      │\n"
+        msg += "╰──────────────────────────╯\n"
         msg += "\n"
-    msg += "━━━━━━━━━━━━━━━━━━\n"
-    msg += "📖 NASIL YORUMLANIR?\n\n"
-    msg += "🟢 = LONG (Alim) - Yukselis trendi\n"
-    msg += "🔴 = SHORT (Satis) - Dusus trendi\n"
-    msg += "🟡 = BEKLE / DIKKAT - Riskli bolge\n\n"
-    msg += "🎯 Pozisyon onerisi:\n"
-    msg += "   🟢 LONG → Yukselis trendinde alim\n"
-    msg += "   🔴 SHORT → Dusus trendinde satis\n"
-    msg += "   🟡 DIKKAT/BEKLE → Trend olgun\n\n"
-    msg += "🎚️ Kaldirac onerisi (gucune gore):\n"
-    msg += "   2x-3x → Cok dusuk (zayif trend)\n"
-    msg += "   3x-5x → Dusuk-orta\n"
-    msg += "   5x-10x → Orta\n"
-    msg += "   10x-15x → Yuksek (guclu trend)\n\n"
-    msg += "💎 TP / 🛑 SL (Kaldiraca gore hesaplanir):\n"
-    msg += "   SL her zaman likitasyondan ONCE!\n"
-    msg += "   TP1 → kucuk kar (1.5x SL)\n"
-    msg += "   TP2 → orta kar (3x SL)\n"
-    msg += "   TP3 → buyuk kar (5x SL)\n"
-    msg += "   ⚠️ Likitasyon → hesap kapanir!\n\n"
+        for t in falling[:6]:
+            msg += build_trend_block(t)
+        msg += "\n"
+    
+    # Kısa rehber - kompakt
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "📖 KISA REHBER\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "\n"
+    msg += "🟢 LONG  → Yükseliş trendinde ALIM\n"
+    msg += "🔴 SHORT → Düşüş trendinde SATIŞ\n"
+    msg += "🟡 BEKLE → Riskli bölge, bekle\n"
+    msg += "\n"
+    msg += "🎚️ Kaldıraç:\n"
+    msg += "   2x-3x  → Zayıf trend\n"
+    msg += "   5x-10x → Orta güç\n"
+    msg += "   10x-15x → Güçlü trend\n"
+    msg += "\n"
+    msg += "💎 TP = Kar alma hedefleri\n"
+    msg += "🛑 SL = Stop Loss (zarar limiti)\n"
+    msg += "⚠️ Likitasyon = Hesap kapanma fiyatı\n"
+    msg += "✅ SL, likitasyondan ÖNCE çalışır\n"
+    msg += "\n"
     msg += "⚡ RSI:\n"
-    msg += "   70+ → Asiri alim (dusus gelebilir)\n"
-    msg += "   30-70 → Normal bolge\n"
-    msg += "   30 alti → Asiri satim\n\n"
+    msg += "   70+ → Aşırı alım (düşüş gelebilir)\n"
+    msg += "   30-70 → Normal bölge\n"
+    msg += "   <30 → Aşırı satım (yükseliş gelebilir)\n"
+    msg += "\n"
     msg += "📦 Hacim:\n"
-    msg += "   1x → Normal\n"
-    msg += "   2x+ → Guclu (guvenilir sinyal)\n"
-    msg += "   3x+ → Cok guclu\n\n"
-    msg += "━━━━━━━━━━━━━━━━━━\n"
-    msg += "⚠️ Yatirim tavsiyesi DEGILDIR!\n"
-    msg += "Tahminler teknik analize dayalidir, kesin degildir.\n"
-    msg += "Yuksek kaldirac = yuksek risk!\n"
-    msg += "Kendi arastirmanizi yapin."
+    msg += "   1x → Normal  |  2x+ → Güçlü\n"
+    msg += "   3x+ → Çok güçlü (güvenilir)\n"
+    msg += "\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "⚠️ Yatırım tavsiyesi DEĞİLDİR!\n"
+    msg += "Tahminler teknik analize dayalıdır.\n"
+    msg += "Yüksek kaldıraç = yüksek risk!\n"
+    msg += "Kendi araştırmanızı yapın.\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     return msg
 
 def run_analysis_cycle(config):
