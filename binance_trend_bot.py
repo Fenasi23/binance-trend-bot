@@ -120,6 +120,36 @@ def estimate_trend_remaining(analysis):
             base = "6-12 saat daha (yeni basladi)"
     return base + vol_note
 
+def get_position_recommendation(analysis):
+    trend = analysis['trend']
+    rsi = analysis.get('rsi')
+    vol_ratio = analysis.get('volume_ratio', 1.0)
+    if rsi is None: return "Veri yok"
+    vol_note = ""
+    if vol_ratio >= 2.5:
+        vol_note = " (guclu hacim)"
+    elif vol_ratio < 1.5:
+        vol_note = " (zayif hacim - dikkat)"
+    if trend == 'rising':
+        if rsi < 50:
+            base = "LONG (Alim) - yukselis yeni basladi"
+        elif rsi < 65:
+            base = "LONG (Alim) - yukselis devam ediyor"
+        elif rsi < 75:
+            base = "DIKKAT (yukselis olgun) - zirve yaklasiyor"
+        else:
+            base = "BEKLE (zirve, riskli) - alim icin gec olabilir"
+    else:
+        if rsi > 50:
+            base = "SHORT (Satis) - dusus yeni basladi"
+        elif rsi > 35:
+            base = "SHORT (Satis) - dusus devam ediyor"
+        elif rsi > 25:
+            base = "DIKKAT (dusus olgun) - dip yaklasiyor"
+        else:
+            base = "BEKLE (dip, riskli) - satis icin gec olabilir"
+    return base + vol_note
+
 def calculate_trend_duration(closes, trend, threshold):
     candles_in_trend = 0
     min_cum_change = threshold * 0.25
@@ -245,6 +275,8 @@ def build_notification_message(config, trends):
             msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
             est_remaining = estimate_trend_remaining(t)
             msg += f"   Tahmini kalan: {est_remaining}\n"
+            position_rec = get_position_recommendation(t)
+            msg += f"   Pozisyon onerisi: {position_rec}\n"
         msg += "\n"
     if falling:
         msg += "DUSUS TRENDI\n----------\n"
@@ -260,11 +292,17 @@ def build_notification_message(config, trends):
             msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
             est_remaining = estimate_trend_remaining(t)
             msg += f"   Tahmini kalan: {est_remaining}\n"
+            position_rec = get_position_recommendation(t)
+            msg += f"   Pozisyon onerisi: {position_rec}\n"
         msg += "\n"
     msg += "--------------------\n"
     msg += "NASIL YORUMLANIR?\n"
-    msg += "Y = Yukselis -> Alim firsati olabilir\n"
-    msg += "D = Dusus -> Satis uyari / Dip firsati\n\n"
+    msg += "Y = Yukselis | D = Dusus\n\n"
+    msg += "Pozisyon onerisi:\n"
+    msg += "   LONG (Alim) -> Yukselis trendinde alim firsati\n"
+    msg += "   SHORT (Satis) -> Dusus trendinde satis firsati\n"
+    msg += "   DIKKAT -> Trend olgun, donus gelebilir\n"
+    msg += "   BEKLE -> Zirve/dip yaklasik, riskli\n\n"
     msg += "RSI:\n"
     msg += "   70+ : Asiri alim (dusus gelebilir)\n"
     msg += "   30-70 : Normal bolge\n"
