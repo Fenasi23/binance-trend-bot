@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os, sys, time, json, logging, requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
 logger = logging.getLogger('BinanceTrendBot')
+
+ISTANBUL_TZ = timezone(timedelta(hours=3))
 
 BINANCE_ENDPOINTS = [
     'https://data-api.binance.vision',
@@ -256,66 +258,68 @@ def build_notification_message(config, trends):
     falling = [t for t in trends if t['trend'] == 'falling']
     rising.sort(key=lambda x: x['change_1h'], reverse=True)
     falling.sort(key=lambda x: x['change_1h'])
-    now_str = datetime.utcnow().strftime('%d.%m.%Y %H:%M UTC')
-    msg = "--------------------\n"
-    msg += "BINANCE TREND RAPORU\n"
-    msg += f"{now_str} | {len(rising) + len(falling)} yeni trend\n"
-    msg += "--------------------\n\n"
+    now_str = datetime.now(ISTANBUL_TZ).strftime('%d.%m.%Y %H:%M (TSI)')
+    msg = "━━━━━━━━━━━━━━━━━━\n"
+    msg += "📊 BINANCE TREND RAPORU\n"
+    msg += f"🕐 {now_str} | {len(rising) + len(falling)} yeni trend\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n\n"
     if rising:
-        msg += "YUKSELIS TRENDI\n----------\n"
+        msg += "🟢 YUKSELIS TRENDI\n"
+        msg += "─────────────────\n"
         for t in rising[:6]:
-            arrow = "Y" if t['change_1h'] > 5 else "I"
+            arrow = "🚀" if t['change_1h'] > 5 else "📈"
             msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
-            msg += f"   Fiyat: {format_price(t['price'])}\n"
-            msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
+            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
+            msg += f"   📊 1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
             rsi_interp = rsi_interpretation(t['rsi'])
-            msg += f"   RSI: {rsi_val:.1f} -> {rsi_interp}\n"
+            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
             vol_interp = volume_interpretation(t['volume_ratio'])
-            msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
+            msg += f"   📦 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
             est_remaining = estimate_trend_remaining(t)
-            msg += f"   Tahmini kalan: {est_remaining}\n"
+            msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
             position_rec = get_position_recommendation(t)
-            msg += f"   Pozisyon onerisi: {position_rec}\n"
+            msg += f"   🎯 Pozisyon: {position_rec}\n"
         msg += "\n"
     if falling:
-        msg += "DUSUS TRENDI\n----------\n"
+        msg += "🔴 DUSUS TRENDI\n"
+        msg += "─────────────────\n"
         for t in falling[:6]:
-            arrow = "D" if t['change_1h'] < -5 else "L"
+            arrow = "💥" if t['change_1h'] < -5 else "📉"
             msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
-            msg += f"   Fiyat: {format_price(t['price'])}\n"
-            msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
+            msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
+            msg += f"   📊 1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
             rsi_interp = rsi_interpretation(t['rsi'])
-            msg += f"   RSI: {rsi_val:.1f} -> {rsi_interp}\n"
+            msg += f"   ⚡ RSI: {rsi_val:.1f} → {rsi_interp}\n"
             vol_interp = volume_interpretation(t['volume_ratio'])
-            msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
+            msg += f"   📦 Hacim: {t['volume_ratio']:.1f}x → {vol_interp}\n"
             est_remaining = estimate_trend_remaining(t)
-            msg += f"   Tahmini kalan: {est_remaining}\n"
+            msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
             position_rec = get_position_recommendation(t)
-            msg += f"   Pozisyon onerisi: {position_rec}\n"
+            msg += f"   🎯 Pozisyon: {position_rec}\n"
         msg += "\n"
-    msg += "--------------------\n"
-    msg += "NASIL YORUMLANIR?\n"
-    msg += "Y = Yukselis | D = Dusus\n\n"
-    msg += "Pozisyon onerisi:\n"
-    msg += "   LONG (Alim) -> Yukselis trendinde alim firsati\n"
-    msg += "   SHORT (Satis) -> Dusus trendinde satis firsati\n"
-    msg += "   DIKKAT -> Trend olgun, donus gelebilir\n"
-    msg += "   BEKLE -> Zirve/dip yaklasik, riskli\n\n"
-    msg += "RSI:\n"
-    msg += "   70+ : Asiri alim (dusus gelebilir)\n"
-    msg += "   30-70 : Normal bolge\n"
-    msg += "   <30 : Asiri satim (yukselis gelebilir)\n\n"
-    msg += "Hacim:\n"
-    msg += "   1x : Normal\n"
-    msg += "   2x+ : Guclu (guvenilir sinyal)\n"
-    msg += "   3x+ : Cok guclu\n\n"
-    msg += "Tahmini kalan: Trendin ne kadar daha surebilecegi\n"
-    msg += "   Zirve/dip yaklasiksa -> tersine donus gelebilir\n"
-    msg += "   Baslangic asamasinda -> trend daha uzun surebilir\n\n"
-    msg += "--------------------\n"
-    msg += "Yatirim tavsiyesi DEGILDIR!\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+    msg += "📖 NASIL YORUMLANIR?\n\n"
+    msg += "🟢 Y = Yukselis | 🔴 D = Dusus\n\n"
+    msg += "🎯 Pozisyon onerisi:\n"
+    msg += "   LONG (Alim) → Yukselis trendinde alim\n"
+    msg += "   SHORT (Satis) → Dusus trendinde satis\n"
+    msg += "   DIKKAT → Trend olgun, donus gelebilir\n"
+    msg += "   BEKLE → Zirve/dip yaklasik, riskli\n\n"
+    msg += "⚡ RSI:\n"
+    msg += "   70+ → Asiri alim (dusus gelebilir)\n"
+    msg += "   30-70 → Normal bolge\n"
+    msg += "   30 alti → Asiri satim (yukselis gelebilir)\n\n"
+    msg += "📦 Hacim:\n"
+    msg += "   1x → Normal\n"
+    msg += "   2x+ → Guclu (guvenilir sinyal)\n"
+    msg += "   3x+ → Cok guclu\n\n"
+    msg += "⏱️ Tahmini kalan sure:\n"
+    msg += "   Zirve/dip yakinsa → donus gelebilir\n"
+    msg += "   Baslangicta → trend daha uzun surer\n\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+    msg += "⚠️ Yatirim tavsiyesi DEGILDIR!\n"
     msg += "Tahminler teknik analize dayalidir, kesin degildir.\n"
     msg += "Kendi arastirmanizi yapin."
     return msg
