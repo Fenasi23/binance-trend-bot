@@ -86,6 +86,40 @@ def volume_interpretation(vol):
     elif vol >= 1.5: return "Orta guc"
     else: return "Normal hacim"
 
+def estimate_trend_remaining(analysis):
+    trend = analysis['trend']
+    rsi = analysis.get('rsi')
+    vol_ratio = analysis.get('volume_ratio', 1.0)
+    if rsi is None: return "Tahmin yok"
+    vol_note = ""
+    if vol_ratio >= 2.5:
+        vol_note = " (hacim yuksek, daha uzun)"
+    elif vol_ratio < 1.5:
+        vol_note = " (hacim zayif, daha kisa)"
+    if trend == 'rising':
+        if rsi >= 75:
+            base = "0-2 saat daha (zirve yaklasiyor, donus gelebilir)"
+        elif rsi >= 65:
+            base = "1-3 saat daha (olgunlasiyor)"
+        elif rsi >= 50:
+            base = "2-4 saat daha (devam ediyor)"
+        elif rsi >= 35:
+            base = "4-8 saat daha (baslangic, yukari yer var)"
+        else:
+            base = "6-12 saat daha (yeni basladi)"
+    else:
+        if rsi <= 25:
+            base = "0-2 saat daha (dip yaklasiyor, donus gelebilir)"
+        elif rsi <= 35:
+            base = "1-3 saat daha (olgunlasiyor)"
+        elif rsi <= 50:
+            base = "2-4 saat daha (devam ediyor)"
+        elif rsi <= 65:
+            base = "4-8 saat daha (baslangic, asagi yer var)"
+        else:
+            base = "6-12 saat daha (yeni basladi)"
+    return base + vol_note
+
 def calculate_trend_duration(closes, trend, threshold):
     candles_in_trend = 0
     min_cum_change = threshold * 0.25
@@ -201,7 +235,7 @@ def build_notification_message(config, trends):
         msg += "YUKSELIS TRENDI\n----------\n"
         for t in rising[:6]:
             arrow = "Y" if t['change_1h'] > 5 else "I"
-            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk trend)\n"
+            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
             msg += f"   Fiyat: {format_price(t['price'])}\n"
             msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
@@ -209,12 +243,14 @@ def build_notification_message(config, trends):
             msg += f"   RSI: {rsi_val:.1f} -> {rsi_interp}\n"
             vol_interp = volume_interpretation(t['volume_ratio'])
             msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
+            est_remaining = estimate_trend_remaining(t)
+            msg += f"   Tahmini kalan: {est_remaining}\n"
         msg += "\n"
     if falling:
         msg += "DUSUS TRENDI\n----------\n"
         for t in falling[:6]:
             arrow = "D" if t['change_1h'] < -5 else "L"
-            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk trend)\n"
+            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
             msg += f"   Fiyat: {format_price(t['price'])}\n"
             msg += f"   1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
@@ -222,6 +258,8 @@ def build_notification_message(config, trends):
             msg += f"   RSI: {rsi_val:.1f} -> {rsi_interp}\n"
             vol_interp = volume_interpretation(t['volume_ratio'])
             msg += f"   Hacim: {t['volume_ratio']:.1f}x -> {vol_interp}\n"
+            est_remaining = estimate_trend_remaining(t)
+            msg += f"   Tahmini kalan: {est_remaining}\n"
         msg += "\n"
     msg += "--------------------\n"
     msg += "NASIL YORUMLANIR?\n"
@@ -235,8 +273,12 @@ def build_notification_message(config, trends):
     msg += "   1x : Normal\n"
     msg += "   2x+ : Guclu (guvenilir sinyal)\n"
     msg += "   3x+ : Cok guclu\n\n"
+    msg += "Tahmini kalan: Trendin ne kadar daha surebilecegi\n"
+    msg += "   Zirve/dip yaklasiksa -> tersine donus gelebilir\n"
+    msg += "   Baslangic asamasinda -> trend daha uzun surebilir\n\n"
     msg += "--------------------\n"
     msg += "Yatirim tavsiyesi DEGILDIR!\n"
+    msg += "Tahminler teknik analize dayalidir, kesin degildir.\n"
     msg += "Kendi arastirmanizi yapin."
     return msg
 
