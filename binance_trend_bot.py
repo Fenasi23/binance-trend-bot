@@ -152,8 +152,24 @@ def get_position_recommendation(analysis):
             base = "BEKLE (dip, riskli) - satis icin gec olabilir"
     return base + vol_note
 
+def get_position_emoji(analysis):
+    """LONG yeşil, SHORT kırmızı emoji"""
+    trend = analysis['trend']
+    rsi = analysis.get('rsi')
+    if trend == 'rising':
+        if rsi is not None and rsi >= 75:
+            return "🟡"  # BEKLE - sarı (nötr)
+        if rsi is not None and rsi >= 65:
+            return "🟡"  # DIKKAT - sarı
+        return "🟢"  # LONG - yeşil
+    else:
+        if rsi is not None and rsi <= 25:
+            return "🟡"  # BEKLE - sarı
+        if rsi is not None and rsi <= 35:
+            return "🟡"  # DIKKAT - sarı
+        return "🔴"  # SHORT - kırmızı
+
 def get_leverage_recommendation(analysis):
-    """Trend gucune gore kaldirac onerisi"""
     rsi = analysis.get('rsi')
     vol_ratio = analysis.get('volume_ratio', 1.0)
     change_1h = abs(analysis.get('change_1h', 0))
@@ -173,7 +189,6 @@ def get_leverage_recommendation(analysis):
     else: return "2x-3x (dusuk - dikkat)"
 
 def calculate_tp_sl(analysis):
-    """Take Profit ve Stop Loss seviyelerini hesapla"""
     trend = analysis['trend']
     price = analysis['price']
     ema20 = analysis.get('ema20')
@@ -303,13 +318,15 @@ def build_notification_message(config, trends):
     msg = "━━━━━━━━━━━━━━━━━━\n"
     msg += "📊 BINANCE TREND RAPORU\n"
     msg += f"🕐 {now_str} | {len(rising) + len(falling)} yeni trend\n"
+    msg += "🟢 LONG (Alim) | 🔴 SHORT (Satis) | 🟡 BEKLE\n"
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
     if rising:
-        msg += "🟢 YUKSELIS TRENDI\n"
-        msg += "─────────────────\n"
+        msg += "🟢🟢🟢 YUKSELIS TRENDI (LONG FIRSATLARI)\n"
+        msg += "─────────────────────────────────────\n"
         for t in rising[:6]:
+            pos_emoji = get_position_emoji(t)
             arrow = "🚀" if t['change_1h'] > 5 else "📈"
-            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
+            msg += f"\n{pos_emoji} {arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
             msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
             msg += f"   📊 1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
@@ -320,7 +337,7 @@ def build_notification_message(config, trends):
             est_remaining = estimate_trend_remaining(t)
             msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
             position_rec = get_position_recommendation(t)
-            msg += f"   🎯 Pozisyon: {position_rec}\n"
+            msg += f"   🎯 Pozisyon: {pos_emoji} {position_rec}\n"
             leverage = get_leverage_recommendation(t)
             msg += f"   🎚️ Kaldirac: {leverage}\n"
             tp1, tp2, tp3, sl = calculate_tp_sl(t)
@@ -331,11 +348,12 @@ def build_notification_message(config, trends):
             msg += f"   🛑 SL (Stop Loss): {format_price(sl)} ({sl_pct:+.1f}%)\n"
         msg += "\n"
     if falling:
-        msg += "🔴 DUSUS TRENDI\n"
-        msg += "─────────────────\n"
+        msg += "🔴🔴🔴 DUSUS TRENDI (SHORT FIRSATLARI)\n"
+        msg += "─────────────────────────────────────\n"
         for t in falling[:6]:
+            pos_emoji = get_position_emoji(t)
             arrow = "💥" if t['change_1h'] < -5 else "📉"
-            msg += f"\n{arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
+            msg += f"\n{pos_emoji} {arrow} {t['symbol']} ({t['trend_duration_minutes']} dk'dir devam ediyor)\n"
             msg += f"   💰 Fiyat: {format_price(t['price'])}\n"
             msg += f"   📊 1s: {format_change(t['change_1h'])} | 4s: {format_change(t['change_4h'])}\n"
             rsi_val = t['rsi'] if t['rsi'] is not None else 0
@@ -346,7 +364,7 @@ def build_notification_message(config, trends):
             est_remaining = estimate_trend_remaining(t)
             msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
             position_rec = get_position_recommendation(t)
-            msg += f"   🎯 Pozisyon: {position_rec}\n"
+            msg += f"   🎯 Pozisyon: {pos_emoji} {position_rec}\n"
             leverage = get_leverage_recommendation(t)
             msg += f"   🎚️ Kaldirac: {leverage}\n"
             tp1, tp2, tp3, sl = calculate_tp_sl(t)
@@ -358,12 +376,13 @@ def build_notification_message(config, trends):
         msg += "\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += "📖 NASIL YORUMLANIR?\n\n"
-    msg += "🟢 Y = Yukselis | 🔴 D = Dusus\n\n"
+    msg += "🟢 = LONG (Alim) - Yukselis trendi\n"
+    msg += "🔴 = SHORT (Satis) - Dusus trendi\n"
+    msg += "🟡 = BEKLE / DIKKAT - Riskli bolge\n\n"
     msg += "🎯 Pozisyon onerisi:\n"
-    msg += "   LONG (Alim) → Yukselis trendinde alim\n"
-    msg += "   SHORT (Satis) → Dusus trendinde satis\n"
-    msg += "   DIKKAT → Trend olgun, donus gelebilir\n"
-    msg += "   BEKLE → Zirve/dip yaklasik, riskli\n\n"
+    msg += "   🟢 LONG (Alim) → Yukselis trendinde alim\n"
+    msg += "   🔴 SHORT (Satis) → Dusus trendinde satis\n"
+    msg += "   🟡 DIKKAT/BEKLE → Trend olgun, donus gelebilir\n\n"
     msg += "🎚️ Kaldirac onerisi (gucune gore):\n"
     msg += "   2x-3x → Cok dusuk (zayif trend, dikkat)\n"
     msg += "   3x-5x → Dusuk-orta (zayif trend)\n"
@@ -390,8 +409,7 @@ def build_notification_message(config, trends):
     msg += "   Baslangicta → trend daha uzun surer\n\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += "⚠️ Yatirim tavsiyesi DEGILDIR!\n"
-    msg += "Kaldirac, TP ve SL tahminleri teknik\n"
-    msg += "analize dayalidir, kesin degildir.\n"
+    msg += "Tahminler teknik analize dayalidir, kesin degildir.\n"
     msg += "Kendi arastirmanizi yapin.\n"
     msg += "Yuksek kaldirac = yuksek risk!"
     return msg
@@ -454,7 +472,7 @@ def run_analysis_cycle(config):
 
 def main():
     config = get_config()
-    logger.info('Binance Trend Bot - GitHub Actions Surumu baslatiliyor')
+    logger.info('Binance Trend Bot - GitHub Actions Surumu baslatilio')
     logger.info(f"Esik: %{config['price_change_threshold_pct']} | Min hacim: ${config['min_quote_volume_usd']:,}")
     logger.info(f"Bildirim penceresi: {config['notify_window_min_minutes']}-{config['notify_window_max_minutes']} dk")
     run_analysis_cycle(config)
