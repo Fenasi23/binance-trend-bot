@@ -152,6 +152,47 @@ def get_position_recommendation(analysis):
             base = "BEKLE (dip, riskli) - satis icin gec olabilir"
     return base + vol_note
 
+def get_leverage_recommendation(analysis):
+    """Trend gucune gore kaldirac onerisi"""
+    rsi = analysis.get('rsi')
+    vol_ratio = analysis.get('volume_ratio', 1.0)
+    change_1h = abs(analysis.get('change_1h', 0))
+    if rsi is None: return "2x-3x (dusuk)"
+    strength = 0
+    if vol_ratio >= 2.5: strength += 3
+    elif vol_ratio >= 1.5: strength += 2
+    elif vol_ratio >= 1.0: strength += 1
+    if 35 <= rsi <= 65: strength += 3
+    elif 25 <= rsi <= 75: strength += 2
+    if change_1h >= 5: strength += 3
+    elif change_1h >= 2: strength += 2
+    elif change_1h >= 1: strength += 1
+    if strength >= 8: return "10x-15x (guclu trend)"
+    elif strength >= 6: return "5x-10x (orta guc)"
+    elif strength >= 4: return "3x-5x (zayif trend)"
+    else: return "2x-3x (dusuk - dikkat)"
+
+def calculate_tp_sl(analysis):
+    """Take Profit ve Stop Loss seviyelerini hesapla"""
+    trend = analysis['trend']
+    price = analysis['price']
+    ema20 = analysis.get('ema20')
+    if trend == 'rising':
+        tp1 = price * 1.05
+        tp2 = price * 1.10
+        tp3 = price * 1.15
+        sl = price * 0.97
+        if ema20 and ema20 < sl and ema20 > 0:
+            sl = ema20
+    else:
+        tp1 = price * 0.95
+        tp2 = price * 0.90
+        tp3 = price * 0.85
+        sl = price * 1.03
+        if ema20 and ema20 > sl and ema20 > 0:
+            sl = ema20
+    return tp1, tp2, tp3, sl
+
 def calculate_trend_duration(closes, trend, threshold):
     candles_in_trend = 0
     min_cum_change = threshold * 0.25
@@ -280,6 +321,14 @@ def build_notification_message(config, trends):
             msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
             position_rec = get_position_recommendation(t)
             msg += f"   🎯 Pozisyon: {position_rec}\n"
+            leverage = get_leverage_recommendation(t)
+            msg += f"   🎚️ Kaldirac: {leverage}\n"
+            tp1, tp2, tp3, sl = calculate_tp_sl(t)
+            msg += f"   💎 TP1 (Take Profit): {format_price(tp1)} (+5%)\n"
+            msg += f"   💎 TP2 (Take Profit): {format_price(tp2)} (+10%)\n"
+            msg += f"   💎 TP3 (Take Profit): {format_price(tp3)} (+15%)\n"
+            sl_pct = ((sl - t['price']) / t['price']) * 100
+            msg += f"   🛑 SL (Stop Loss): {format_price(sl)} ({sl_pct:+.1f}%)\n"
         msg += "\n"
     if falling:
         msg += "🔴 DUSUS TRENDI\n"
@@ -298,6 +347,14 @@ def build_notification_message(config, trends):
             msg += f"   ⏱️ Tahmini kalan: {est_remaining}\n"
             position_rec = get_position_recommendation(t)
             msg += f"   🎯 Pozisyon: {position_rec}\n"
+            leverage = get_leverage_recommendation(t)
+            msg += f"   🎚️ Kaldirac: {leverage}\n"
+            tp1, tp2, tp3, sl = calculate_tp_sl(t)
+            msg += f"   💎 TP1 (Take Profit): {format_price(tp1)} (-5%)\n"
+            msg += f"   💎 TP2 (Take Profit): {format_price(tp2)} (-10%)\n"
+            msg += f"   💎 TP3 (Take Profit): {format_price(tp3)} (-15%)\n"
+            sl_pct = ((sl - t['price']) / t['price']) * 100
+            msg += f"   🛑 SL (Stop Loss): {format_price(sl)} ({sl_pct:+.1f}%)\n"
         msg += "\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += "📖 NASIL YORUMLANIR?\n\n"
@@ -307,6 +364,19 @@ def build_notification_message(config, trends):
     msg += "   SHORT (Satis) → Dusus trendinde satis\n"
     msg += "   DIKKAT → Trend olgun, donus gelebilir\n"
     msg += "   BEKLE → Zirve/dip yaklasik, riskli\n\n"
+    msg += "🎚️ Kaldirac onerisi (gucune gore):\n"
+    msg += "   2x-3x → Cok dusuk (zayif trend, dikkat)\n"
+    msg += "   3x-5x → Dusuk-orta (zayif trend)\n"
+    msg += "   5x-10x → Orta (orta guc)\n"
+    msg += "   10x-15x → Yuksek (guclu trend)\n"
+    msg += "   ⚠️ Kaldirac yukseldikce risk artar!\n\n"
+    msg += "💎 TP (Take Profit) seviyeleri:\n"
+    msg += "   TP1 → %5 kar al (ilk hedef)\n"
+    msg += "   TP2 → %10 kar al (orta hedef)\n"
+    msg += "   TP3 → %15 kar al (uzun hedef)\n\n"
+    msg += "🛑 SL (Stop Loss):\n"
+    msg += "   Fiyat %3 aleyhine gidince satis\n"
+    msg += "   Zarar limiti - risk yonetimi\n\n"
     msg += "⚡ RSI:\n"
     msg += "   70+ → Asiri alim (dusus gelebilir)\n"
     msg += "   30-70 → Normal bolge\n"
@@ -320,8 +390,10 @@ def build_notification_message(config, trends):
     msg += "   Baslangicta → trend daha uzun surer\n\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += "⚠️ Yatirim tavsiyesi DEGILDIR!\n"
-    msg += "Tahminler teknik analize dayalidir, kesin degildir.\n"
-    msg += "Kendi arastirmanizi yapin."
+    msg += "Kaldirac, TP ve SL tahminleri teknik\n"
+    msg += "analize dayalidir, kesin degildir.\n"
+    msg += "Kendi arastirmanizi yapin.\n"
+    msg += "Yuksek kaldirac = yuksek risk!"
     return msg
 
 def run_analysis_cycle(config):
